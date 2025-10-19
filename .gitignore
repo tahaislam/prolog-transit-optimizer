@@ -1,0 +1,42 @@
+# GTFS data files
+data/gtfs/*.txt
+data/gtfs/*.zip
+data/osm/*.osm
+data/osm/*.pbf
+data/osm/*.xml
+
+# Keep directory structure
+!data/gtfs/.gitkeep
+!data/osm/.gitkeep
+
+# Prolog compiled files
+*.qlf
+*.qo
+
+# SWI-Prolog history
+.swi-history
+
+# Editor files
+*.swp
+*.swo
+*~
+.DS_Store
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Session notes (private development notes)
+session_notes/
+
+# Generated PDFs
+pdfs/
