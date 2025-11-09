@@ -16,8 +16,12 @@
 
 :- use_module(library(clpfd)).
 :- use_module(library(apply)).
+:- use_module(library(pairs)).
 :- use_module('../core/gtfs_schema').
 :- use_module('../core/time_utils').
+
+% Optional: load reasoning module if available for tracing
+:- catch(use_module('../explain/reasoning'), _, true).
 
 /**
  * find_routes(+FromStopId, +ToStopId, +DepartureTime, -Routes, +Options)
@@ -32,10 +36,13 @@
  */
 find_routes(FromStopId, ToStopId, DepartureTime, Routes, Options) :-
     option(max_transfers(MaxTransfers), Options, 3),
+    option(max_routes(MaxRoutes), Options, 5),  % Limit to first 5 routes by default
     option(date(Date), Options, _),
 
-    % Find all possible routes with BFS/DFS
-    findall(
+    % Find up to MaxRoutes possible routes with BFS/DFS
+    % Using findnsols instead of findall to limit search space
+    findnsols(
+        MaxRoutes,
         route_solution(TotalTime, Transfers, Segments),
         find_route_with_transfers(FromStopId, ToStopId, DepartureTime, Date,
                                    MaxTransfers, TotalTime, Transfers, Segments),
@@ -64,7 +71,23 @@ find_route_dfs(CurrentStop, DestStop, CurrentTime, Date, MaxTransfers, Depth, Vi
     \+ member(CurrentStop, Visited),
 
     % Find a direct trip from current stop to destination
-    next_trip_segment(CurrentStop, DestStop, CurrentTime, Date, Segment).
+    next_trip_segment(CurrentStop, DestStop, CurrentTime, Date, Segment),
+
+    % Log this segment selection (if tracing enabled)
+    (   catch(reasoning:trace_enabled, _, fail)
+    ->  Segment = segment(TripId, RouteId, From, To, DepTime, ArrTime, _),
+        stop(From, FromName, _, _, _, _, _),
+        stop(To, ToName, _, _, _, _, _),
+        route(RouteId, _, RouteName, _, _, _),
+        format(atom(Reason), 'Direct route found: ~w from ~w to ~w (depart ~w, arrive ~w)',
+               [RouteName, FromName, ToName, DepTime, ArrTime]),
+        reasoning:add_decision(
+            route_segment_selected,
+            context(segment(TripId, RouteId, From, To), direct(true)),
+            Reason
+        )
+    ;   true
+    ).
 
 find_route_dfs(CurrentStop, DestStop, CurrentTime, Date, MaxTransfers, Depth, Visited, [Segment|RestSegments]) :-
     Depth < MaxTransfers,
@@ -75,10 +98,38 @@ find_route_dfs(CurrentStop, DestStop, CurrentTime, Date, MaxTransfers, Depth, Vi
     IntermediateStop \= DestStop,
 
     % Get arrival time at intermediate stop
-    Segment = segment(_, _, _, _, _, ArrivalTime, _),
+    Segment = segment(TripId, RouteId, From, To, _DepTime, ArrivalTime, _),
+
+    % Log segment selection with transfer
+    (   catch(reasoning:trace_enabled, _, fail)
+    ->  stop(From, FromName, _, _, _, _, _),
+        stop(To, ToName, _, _, _, _, _),
+        route(RouteId, _, RouteName, _, _, _),
+        format(atom(SegReason), 'Selected segment: ~w from ~w to ~w (transfer required)',
+               [RouteName, FromName, ToName]),
+        reasoning:add_decision(
+            route_segment_selected,
+            context(segment(TripId, RouteId, From, To), direct(false)),
+            SegReason
+        )
+    ;   true
+    ),
 
     % Add transfer time (assume 5 minutes)
     time_add(ArrivalTime, 5, NextDepTime),
+
+    % Log transfer decision
+    (   catch(reasoning:trace_enabled, _, fail)
+    ->  stop(IntermediateStop, TransferStopName, _, _, _, _, _),
+        format(atom(TransferReason), 'Transfer at ~w (5 min connection time from ~w to ~w)',
+               [TransferStopName, ArrivalTime, NextDepTime]),
+        reasoning:add_decision(
+            transfer_point,
+            context(stop(IntermediateStop), arrival(ArrivalTime), next_dep(NextDepTime)),
+            TransferReason
+        )
+    ;   true
+    ),
 
     % Continue search from intermediate stop
     NewDepth is Depth + 1,
@@ -152,7 +203,7 @@ next_departure(StopId, RouteId, AfterTime, departure(TripId, DepTime, Headsign))
  */
 reachable_stops(FromStopId, DepartureTime, MaxTime, ReachableStops) :-
     findall(
-        reachable(StopId, ArrivalTime, TravelTime),
+        reachable(StopId, ArrTime, TravelTime),
         (
             next_trip_segment(FromStopId, StopId, DepartureTime, _,
                             segment(_, _, _, _, DepTime, ArrTime, _)),
