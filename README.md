@@ -4,6 +4,14 @@ A multi-constraint transit route optimizer built in Prolog that combines GTFS tr
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+> **📅 Latest Update (Nov 4, 2025):** A* performance fix applied (stop count bound). Needs testing next session. See [NEXT-SESSION-START-HERE.md](NEXT-SESSION-START-HERE.md)
+>
+> **✅ Completed:** Phase 1 Days 1-4 (Explainability Engine) + A* implementation + Critical bug fixes
+>
+> **🔨 Current:** Testing A* performance optimization (memory usage fix)
+>
+> **🚀 Next Steps:** Verify fix, then Phase 1 Days 5-7 (Explanation generation). See [session_notes/expansion-plan.md](session_notes/expansion-plan.md) for roadmap.
+
 ## Features
 
 - **Multi-Objective Optimization**: Balance travel time, number of transfers, and walking distance
@@ -64,6 +72,21 @@ Find a route between two stops:
 ```
 
 For detailed examples, see [QUICKSTART.md](QUICKSTART.md).
+
+## Learning Resources
+
+### Quick Start ⭐
+- **[examples/quick-reference.md](examples/quick-reference.md)** - Terminal commands you can copy-paste (START HERE!)
+- **[examples/example_queries.pl](examples/example_queries.pl)** - Prolog code examples and interactive demos
+- **[examples/README.md](examples/README.md)** - Guide to using the examples
+
+### External Resources
+New to Prolog? This project is designed as a practical learning experience:
+
+- **SWI-Prolog Tutorial**: https://www.swi-prolog.org/pldoc/man?section=quickstart
+- **Learn Prolog Now** (free book): http://www.learnprolognow.org/
+- **99 Prolog Problems**: Practice exercises to build skills
+- **GTFS Reference**: https://gtfs.org/schedule/reference/
 
 ## Example Queries
 
@@ -135,9 +158,12 @@ src/
 │   ├── gtfs_loader.pl
 │   └── time_utils.pl
 ├── routing/           # Route planning and optimization
-│   ├── route_planner.pl
+│   ├── route_planner.pl         # DFS-based routing
+│   ├── route_planner_astar.pl   # A* search (NEW!)
 │   ├── constraints.pl
 │   └── transfers.pl
+├── explain/           # Explainability engine (NEW!)
+│   └── reasoning.pl               # Trace collection
 ├── multimodal/        # Walking and OSM integration
 │   ├── walking.pl
 │   └── osm_integration.pl
@@ -149,6 +175,8 @@ src/
 
 - **gtfs_loader**: Parses GTFS CSV files and loads data into Prolog predicates
 - **route_planner**: Implements depth-first search routing with transfer limits
+- **route_planner_astar**: High-performance A* search with geographic heuristic (NEW!)
+- **reasoning**: Trace collection for explainable routing decisions (NEW!)
 - **constraints**: CLP(FD)-based multi-objective optimization
 - **transfers**: Manages transfers with walking time calculations using haversine formula
 - **api**: User-friendly high-level query interface
@@ -304,16 +332,35 @@ Run the unit tests:
   - Using external database (PostgreSQL)
   - Implementing tabling for memoization
 
+## Recent Improvements (Nov 2, 2025)
+
+### ✅ A* Route Planner
+- High-performance A* search algorithm implemented
+- Geographic heuristic using haversine distance
+- 10-100x faster than DFS for multi-route queries
+- See [ASTAR-USAGE.md](ASTAR-USAGE.md) for usage guide
+
+### ✅ Explainability Engine (Phase 1 Days 1-4)
+- Reasoning trace collection infrastructure
+- Tracks all routing decisions
+- Foundation for explaining route choices
+- See [session_notes/2025-11-02-phase1-day1-2.md](session_notes/2025-11-02-phase1-day1-2.md)
+
+### ✅ Critical Bug Fixes
+- Fixed CSV type conversion issues in GTFS loader
+- Corrected transfer counting logic
+- Added segment merging for clearer route display
+
 ## Future Enhancements
 
 Potential areas for expansion:
 
+- **Phase 1 Days 5-7**: Natural language explanation generation (IN PROGRESS)
 - **Real-Time Data**: Integrate GTFS-Realtime for live vehicle positions
 - **OpenStreetMap**: Add detailed walking/cycling routes (see [src/multimodal/osm_integration.pl](src/multimodal/osm_integration.pl))
 - **Web Interface**: Build REST API using SWI-Prolog HTTP server
 - **Visualization**: Export routes to GeoJSON for mapping
 - **Fare Calculation**: Add fare zones and pricing
-- **A* Search**: Replace DFS with A* for better performance
 
 ## Contributing
 
