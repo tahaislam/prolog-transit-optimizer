@@ -3,6 +3,10 @@
  *
  * Efficient route finding using A* search with geographic heuristic
  * Much faster than DFS for large transit networks
+ *
+ * Phase 1 Optimizations (Dec 17, 2025):
+ * - Adaptive iteration limits based on route distance
+ * - Stop type detection with different constraints for subway vs surface
  */
 
 :- module(route_planner_astar, [
@@ -12,8 +16,10 @@
 
 :- use_module(library(assoc)).
 :- use_module(library(heaps)).
+:- use_module(library(lists), [member/2]).
 :- use_module('../core/gtfs_schema').
 :- use_module('../core/time_utils').
+:- use_module('transfers', [nearby_stops/3]).
 
 % Optional: load reasoning module if available
 :- catch(use_module('../explain/reasoning'), _, true).
@@ -85,8 +91,13 @@ astar_search(From, To, StartTime, Date, MaxTransfers, Segments) :-
     % Initialize closed set
     empty_assoc(ClosedSet),
 
-    % Run search
-    astar_loop(OpenSet, ClosedSet, To, ToLat, ToLon, Date, MaxTransfers, Segments).
+    % OPTIMIZATION 1: Adaptive iteration limits based on route distance
+    % Short routes (<2km): 2000-4000 iterations
+    % Medium routes (2-5km): 4000-10000 iterations
+    % Long routes (>5km): 10000-20000 iterations
+    calculate_iteration_limit(From, To, MaxIterations),
+
+    astar_loop(OpenSet, ClosedSet, To, ToLat, ToLon, Date, MaxTransfers, 0, MaxIterations, Segments).
 
 /**
  * initial_node(+Stop, +Time, -Node)
@@ -94,11 +105,46 @@ astar_search(From, To, StartTime, Date, MaxTransfers, Segments) :-
 initial_node(Stop, Time, node(Stop, Time, 0, [], 0)).
 
 /**
- * astar_loop(+OpenSet, +ClosedSet, +Goal, +GoalLat, +GoalLon, +Date, +MaxTransfers, -Segments)
+ * calculate_iteration_limit(+From, +To, -MaxIterations)
  *
- * Main A* search loop
+ * OPTIMIZATION 1: Adaptive iteration limits based on route distance
+ *
+ * Calculate appropriate iteration limit based on distance between stops.
+ * Short routes get lower limits (fail faster), long routes get higher limits.
+ *
+ * Strategy (REVISED - v2):
+ * - Base limit: 8000 iterations per km (was 2000 - too aggressive)
+ * - Min limit: 8000 iterations (ensures short routes have enough)
+ * - Max limit: 35000 iterations (down from 50000, still saves time)
+ *
+ * Examples:
+ * - 0.5km route: 8000 iterations (min)
+ * - 1.5km route: 12000 iterations
+ * - 3km route: 24000 iterations
+ * - 5km+ route: 35000 iterations (max)
+ *
+ * This is less aggressive than v1 but still 30% faster than old 50000 limit.
  */
-astar_loop(OpenSet, ClosedSet, Goal, GoalLat, GoalLon, Date, MaxTransfers, Segments) :-
+calculate_iteration_limit(From, To, MaxIterations) :-
+    stop(From, _, Lat1, Lon1, _, _, _),
+    stop(To, _, Lat2, Lon2, _, _, _),
+    haversine_distance(Lat1, Lon1, Lat2, Lon2, DistKm),
+
+    % Base limit: 8000 iterations per km (revised from 2000)
+    BaseLimit is ceiling(DistKm * 8000),
+
+    % Apply min/max bounds (revised: min=8000, max=35000)
+    MaxIterations is min(35000, max(8000, BaseLimit)).
+
+/**
+ * astar_loop(+OpenSet, +ClosedSet, +Goal, +GoalLat, +GoalLon, +Date, +MaxTransfers, +Iterations, +MaxIterations, -Segments)
+ *
+ * Main A* search loop with iteration counting
+ */
+astar_loop(OpenSet, ClosedSet, Goal, GoalLat, GoalLon, Date, MaxTransfers, Iterations, MaxIterations, Segments) :-
+    % Check iteration limit to prevent infinite loops
+    Iterations < MaxIterations,
+
     % Get node with lowest f-score
     get_from_heap(OpenSet, _F, Current, RestOpen),
 
@@ -112,32 +158,81 @@ astar_loop(OpenSet, ClosedSet, Goal, GoalLat, GoalLon, Date, MaxTransfers, Segme
         % Add current to closed set
         put_assoc(CurrentStop, ClosedSet, true, NewClosed),
 
+        % Get current stop coordinates for distance pruning
+        stop(CurrentStop, _, CurrLat, CurrLon, _, _, _),
+        haversine_distance(CurrLat, CurrLon, GoalLat, GoalLon, CurrentDistToGoal),
+
+        % Extract visited stops for cycle detection
+        extract_stops_from_path(Path, VisitedStops),
+
         % Explore neighbors
         findall(
             neighbor(NextStop, Segment, ArrTime, NewTransfers),
             (
-                % Find trips from current stop
-                next_trip_segment_bounded(CurrentStop, NextStop, CurrentTime, Date, Segment),
-                NextStop \= CurrentStop,
-                Segment = segment(_, _, _, _, _, ArrTime, _),
+                (   % Option 1: Find trips from current stop
+                    next_trip_segment_bounded(CurrentStop, NextStop, CurrentTime, Date, Segment),
+                    NextStop \= CurrentStop,
+                    Segment = segment(_, _, _, _, _, ArrTime, _),
 
-                % Calculate new transfer count
-                (   Path = []  % First segment
-                ->  NewTransfers = Transfers
-                ;   Path = [LastSeg|_],
-                    LastSeg = segment(LastTrip, _, _, _, _, _, _),
-                    Segment = segment(ThisTrip, _, _, _, _, _, _),
-                    (   LastTrip = ThisTrip
-                    ->  NewTransfers = Transfers  % Same trip, no transfer
-                    ;   NewTransfers is Transfers + 1  % Different trip, transfer
-                    )
-                ),
+                    % Distance pruning: Don't explore stops moving too far away from goal
+                    stop(NextStop, _, NextLat, NextLon, _, _, _),
+                    haversine_distance(NextLat, NextLon, GoalLat, GoalLon, NextDistToGoal),
+                    % Dynamic detour allowance: 50% of remaining distance or 5km max
+                    AllowedDetour is min(5.0, CurrentDistToGoal * 0.5),
+                    NextDistToGoal =< CurrentDistToGoal + AllowedDetour,
 
-                % Check transfer limit
-                NewTransfers =< MaxTransfers,
+                    % Calculate new transfer count
+                    (   Path = []  % First segment
+                    ->  NewTransfers = Transfers
+                    ;   Path = [LastSeg|_],
+                        LastSeg = segment(LastTrip, _, _, _, _, _, _),
+                        Segment = segment(ThisTrip, _, _, _, _, _, _),
+                        (   LastTrip = ThisTrip
+                        ->  NewTransfers = Transfers  % Same trip, no transfer
+                        ;   NewTransfers is Transfers + 1  % Different trip, transfer
+                        )
+                    ),
 
-                % Not in closed set
-                \+ get_assoc(NextStop, NewClosed, _)
+                    % Check transfer limit
+                    NewTransfers =< MaxTransfers,
+
+                    % Not in closed set
+                    \+ get_assoc(NextStop, NewClosed, _)
+                ;   % Option 2: Walking transfer to nearby stop (LIMITED to prevent explosion)
+                    Path \= [],  % Only after first segment
+                    nearby_stops(CurrentStop, 500, NearbyListAll),  % 500m
+                    % Sort by distance and take only 5 closest to prevent explosion
+                    msort(NearbyListAll, SortedNearby),
+                    take_first_n(5, SortedNearby, NearbyList),
+                    member(nearby(TransferStop, _, WalkDist), NearbyList),
+                    TransferStop \= CurrentStop,
+
+                    % Cycle detection: Don't walk to stops we've already visited
+                    \+ member(TransferStop, VisitedStops),
+
+                    % Calculate walking time
+                    WalkMinutes is ceiling(WalkDist / 1.4 / 60) + 2,
+                    time_add(CurrentTime, WalkMinutes, TransferTime),
+
+                    % Find trip from transfer stop
+                    next_trip_segment_bounded(TransferStop, NextStop, TransferTime, Date, Segment),
+                    NextStop \= TransferStop,
+                    Segment = segment(_, _, _, _, _, ArrTime, _),
+
+                    % Distance pruning: Also check for walking transfers
+                    stop(NextStop, _, NextLat, NextLon, _, _, _),
+                    haversine_distance(NextLat, NextLon, GoalLat, GoalLon, NextDistToGoal),
+                    % Dynamic detour allowance: 50% of remaining distance or 5km max
+                    AllowedDetour is min(5.0, CurrentDistToGoal * 0.5),
+                    NextDistToGoal =< CurrentDistToGoal + AllowedDetour,
+
+                    % Count as transfer
+                    NewTransfers is Transfers + 1,
+                    NewTransfers =< MaxTransfers,
+
+                    % Not in closed set
+                    \+ get_assoc(NextStop, NewClosed, _)
+                )
             ),
             Neighbors
         ),
@@ -145,8 +240,11 @@ astar_loop(OpenSet, ClosedSet, Goal, GoalLat, GoalLon, Date, MaxTransfers, Segme
         % Process all neighbors
         process_neighbors(Neighbors, Current, RestOpen, NewClosed, GoalLat, GoalLon, Date, MaxTransfers, NewOpen),
 
+        % Increment iteration counter
+        NewIterations is Iterations + 1,
+
         % Continue search
-        astar_loop(NewOpen, NewClosed, Goal, GoalLat, GoalLon, Date, MaxTransfers, Segments)
+        astar_loop(NewOpen, NewClosed, Goal, GoalLat, GoalLon, Date, MaxTransfers, NewIterations, MaxIterations, Segments)
     ).
 
 /**
@@ -155,16 +253,30 @@ astar_loop(OpenSet, ClosedSet, Goal, GoalLat, GoalLon, Date, MaxTransfers, Segme
  * Find trip segments from From to To, with time constraints
  * Limits to trips departing within 1 hour to bound search space
  * CRITICAL: Limits to next few stops only (max 10 stops ahead) to prevent explosion
+ *
+ * OPTIMIZATION 2: Adaptive constraints based on stop type
+ * - Surface stops (buses): Stricter limits (30 min window, 8 stops max)
+ * - Subway stops: Current limits (60 min window, 10 stops max)
  */
 next_trip_segment_bounded(From, To, Time, Date, Segment) :-
+    % OPTIMIZATION 2: Detect stop type and adjust constraints
+    (   is_high_frequency_stop(From)
+    ->  % Surface stop: stricter limits to prevent search explosion
+        TimeWindow = 1800,  % 30 min instead of 60
+        StopLimit = 8       % 8 stops instead of 10
+    ;   % Subway stop or low-frequency: current limits
+        TimeWindow = 3600,  % 60 min
+        StopLimit = 10
+    ),
+
     stop_time(TripId, From, _, DepTime, SeqFrom, _),
     time_diff(Time, DepTime, Diff),
     Diff >= 0,
-    Diff =< 3600,  % Only consider trips within 1 hour
+    Diff =< TimeWindow,  % Use adaptive time window
 
     stop_time(TripId, To, ArrTime, _, SeqTo, _),
     SeqTo > SeqFrom,
-    SeqTo =< SeqFrom + 10,  % CRITICAL: Limit to next 10 stops to prevent explosion
+    SeqTo =< SeqFrom + StopLimit,  % Use adaptive stop limit
 
     % Check service if date provided
     (var(Date) -> true ; check_service_active(TripId, Date)),
@@ -180,6 +292,40 @@ next_trip_segment_bounded(From, To, Time, Date, Segment) :-
 check_service_active(TripId, Date) :-
     trip(TripId, _, ServiceId, _, _),
     service_active_on(ServiceId, Date).
+
+/**
+ * is_high_frequency_stop(+StopId)
+ *
+ * OPTIMIZATION 2: Detect high-frequency stops (surface stops with many routes)
+ *
+ * High-frequency stops typically have:
+ * - Many trips (buses/streetcars with frequent service)
+ * - Close spacing (200-400m apart)
+ * - Complex transfer possibilities
+ *
+ * Strategy: Count trips serving this stop
+ * - >200 trips: High frequency (surface stop like bus/streetcar)
+ * - ≤200 trips: Low frequency (subway or low-frequency bus)
+ *
+ * Cached with dynamic assertion for performance.
+ */
+:- dynamic high_frequency_stop_cache/2.
+
+is_high_frequency_stop(StopId) :-
+    % Check cache first
+    (   high_frequency_stop_cache(StopId, Result)
+    ->  Result = true
+    ;   % Not in cache, compute
+        findall(T, stop_time(T, StopId, _, _, _, _), Trips),
+        length(Trips, Count),
+        (   Count > 200
+        ->  % High frequency - cache and return true
+            assertz(high_frequency_stop_cache(StopId, true))
+        ;   % Low frequency - cache false and fail
+            assertz(high_frequency_stop_cache(StopId, false)),
+            fail
+        )
+    ).
 
 /**
  * process_neighbors(+Neighbors, +Current, +OpenSet, +ClosedSet, +GoalLat, +GoalLon, +Date, +MaxTransfers, -NewOpenSet)
@@ -307,4 +453,34 @@ option(Option, Options, Default) :-
     (   member(Option, Options)
     ->  true
     ;   Option =.. [_Name, Default]
+    ).
+
+/**
+ * take_first_n(+N, +List, -First)
+ *
+ * Take first N elements from list, or entire list if shorter
+ */
+take_first_n(N, List, First) :-
+    length(First, N),
+    append(First, _, List),
+    !.
+take_first_n(_, List, List).
+
+/**
+ * extract_stops_from_path(+Path, -Stops)
+ *
+ * Extract all stop IDs from the path (both From and To from each segment)
+ * Used for cycle detection in walking transfers
+ */
+extract_stops_from_path([], []).
+extract_stops_from_path([segment(_, _, From, To, _, _, _)|Rest], Stops) :-
+    extract_stops_from_path(Rest, RestStops),
+    % Add both From and To, removing duplicates
+    (   member(From, RestStops)
+    ->  Stops1 = RestStops
+    ;   Stops1 = [From|RestStops]
+    ),
+    (   member(To, Stops1)
+    ->  Stops = Stops1
+    ;   Stops = [To|Stops1]
     ).

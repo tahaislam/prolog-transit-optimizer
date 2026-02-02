@@ -19,7 +19,8 @@
     % Helper predicates
     route_type_name/2,
     wheelchair_boarding/2,
-    transfer_type/2
+    transfer_type/2,
+    clear_all_gtfs_data/0
 ]).
 
 % Dynamic predicates to store GTFS data in memory
@@ -33,13 +34,10 @@
 :- dynamic agency/4.
 
 % Indexing for performance
+% Note: SWI-Prolog automatically indexes on the first argument(s) of predicates
+% Modern SWI-Prolog performs automatic just-in-time multi-argument indexing
 :- dynamic stop/7.
 :- dynamic stop_time/6.
-:- hash stop(1, 0, 0, 0, 0, 0, 0).        % Index by StopId
-:- hash route(1, 0, 0, 0, 0, 0).          % Index by RouteId
-:- hash trip(1, 2, 3, 0, 0).              % Index by TripId, RouteId, ServiceId
-:- hash stop_time(1, 2, 0, 0, 0, 0).      % Index by TripId and StopId
-:- hash calendar(1, 0, 0, 0, 0, 0, 0, 0). % Index by ServiceId
 
 /**
  * route_type_name(?Type, ?Name)

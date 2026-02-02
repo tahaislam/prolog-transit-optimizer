@@ -31,7 +31,7 @@
 optimize_route(FromStop, ToStop, Options, OptimalRoute) :-
     option(departure_time(DepTime), Options, time(8, 0, 0)),
     option(weights(TimeW, TransferW, WalkW), Options, weights(5, 3, 2)),
-    option(date(Date), Options, _),
+    option(date(_Date), Options, _),
 
     % Find all feasible routes
     find_routes(FromStop, ToStop, DepTime, AllRoutes, Options),
@@ -186,7 +186,7 @@ worse_quality(excellent, excellent, excellent).
  * cost_constraint(+Route, +MaxCost, +FareRules)
  * Validates route does not exceed maximum cost
  */
-cost_constraint(route_solution(_Time, NumTransfers, Segments), MaxCost, FareRules) :-
+cost_constraint(route_solution(_Time, NumTransfers, _Segments), MaxCost, FareRules) :-
     % Simplified: base fare + transfer fees
     option(base_fare(Base), FareRules, 2.50),
     option(transfer_fee(TransferFee), FareRules, 0),

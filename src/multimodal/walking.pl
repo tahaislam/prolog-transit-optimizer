@@ -6,7 +6,7 @@
  */
 
 :- module(walking, [
-    walking_route/4,
+    walking_route/5,
     walking_accessible/2,
     first_last_mile/4,
     walking_distance/3,
