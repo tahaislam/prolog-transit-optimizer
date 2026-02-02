@@ -1,51 +1,79 @@
 # Prolog Transit Route Optimizer
 
-A multi-constraint transit route optimizer built in Prolog that combines GTFS transit data with multi-modal routing capabilities. The system uses constraint logic programming (CLP) to find optimal routes considering schedules, transfers, accessibility, walking distance, and travel time.
+![Language](https://img.shields.io/badge/language-Prolog-blue)
+![License](https://img.shields.io/badge/license-MIT-yellow)
+![Status](https://img.shields.io/badge/status-research%20prototype-orange)
+![Stars](https://img.shields.io/github/stars/tahaislam/prolog-transit-optimizer?style=social)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+A research-oriented transit routing prototype built in **Prolog** to explore how far declarative, logic-based approaches can be pushed on real-world, schedule-driven transportation data.
 
-> **📅 Latest Update (Nov 4, 2025):** A* performance fix applied (stop count bound). Needs testing next session. See [NEXT-SESSION-START-HERE.md](NEXT-SESSION-START-HERE.md)
->
-> **✅ Completed:** Phase 1 Days 1-4 (Explainability Engine) + A* implementation + Critical bug fixes
->
-> **🔨 Current:** Testing A* performance optimization (memory usage fix)
->
-> **🚀 Next Steps:** Verify fix, then Phase 1 Days 5-7 (Explanation generation). See [session_notes/expansion-plan.md](session_notes/expansion-plan.md) for roadmap.
+This project uses **GTFS (General Transit Feed Specification)** data to model transit networks and implements time-dependent routing using A* search. Its primary goal is not to compete with production planners, but to **stress-test logic programming on a data-heavy, algorithmically demanding domain** and document where it succeeds — and where it breaks down.
 
-## Features
+## Project Motivation
 
-- **Multi-Objective Optimization**: Balance travel time, number of transfers, and walking distance
-- **Accessibility Support**: Filter routes for wheelchair accessibility
-- **Transfer Management**: Intelligent transfer handling with walking time calculations
-- **Schedule-Aware Routing**: Uses actual transit schedules from GTFS data
-- **Multi-Modal Integration**: Combine walking, cycling, and transit
-- **Isochrone Generation**: Analyze transit accessibility and coverage
-- **Flexible Querying**: Find fastest route, minimize transfers, or custom optimization
+Most transit routing systems are built using imperative languages and specialized algorithms designed to handle large, time-indexed datasets efficiently.
 
-## Quick Start
+This project intentionally takes a different path.
+
+The objective was to understand:
+
+- How naturally GTFS data maps to Prolog facts and rules
+- Whether declarative constraints can express real transit routing logic cleanly
+- How far generic search algorithms (A*) scale under dense, multimodal transit networks
+- Where the **tool–problem mismatch** becomes fundamental rather than optimizable
+
+The result is a working prototype that performs well on **small to medium networks** (e.g., subway-scale systems) and clearly demonstrates the limits of this approach on large surface networks.
+
+## What This Project Is — and Is Not
+
+### ✅ This project **is**:
+- A practical learning vehicle for Prolog and logic programming
+- A reference GTFS loader implemented declaratively
+- A working example of time-dependent A* routing in Prolog
+- A documented exploration of performance boundaries
+- A useful sandbox for experimentation and refactoring
+
+### ❌ This project **is not**:
+- A production-grade transit planner
+- A replacement for tools like OpenTripPlanner
+- Optimized for very large transit systems with dense surface networks
+
+That distinction is intentional.
+
+## Key Capabilities
+
+- **Declarative GTFS Modeling**
+- **Time-Dependent Routing**
+- **A\* Search Implementation**
+- **Multi-Constraint Queries**
+- **Station Bundling & Caching**
+- **Reachability Analysis (Isochrones)**
+
+## Performance Characteristics (Important)
+
+This project performs well under **limited branching factors** such as subway or rail-only networks.
+
+Performance degrades rapidly when applied to **large surface transit networks** with thousands of stops and high-frequency services. This behavior is documented and intentional.
+
+## Getting Started
 
 ### Prerequisites
 
-- SWI-Prolog 8.0 or higher ([download here](https://www.swi-prolog.org/Download.html))
-- GTFS data from your local transit agency
+- SWI-Prolog 8.0+
+- GTFS dataset from a transit agency
 
 ### Installation
 
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/prolog-transit-optimizer.git
-cd prolog-transit-optimizer
+Clone the repository and place your GTFS feed under `data/gtfs/`.
 
-# Download GTFS data (example: Portland TriMet)
-cd data/gtfs
-wget https://developer.trimet.org/schedule/gtfs.zip
-unzip gtfs.zip
-cd ../..
+```bash
+git clone https://github.com/tahaislam/prolog-transit-optimizer.git
+cd prolog-transit-optimizer
 ```
 
-### Basic Usage
+### Loading the System
 
-Start SWI-Prolog and load the system:
+Start SWI-Prolog and load the main module:
 
 ```prolog
 % Start Prolog
@@ -58,356 +86,108 @@ swipl
 ?- load_gtfs('data/gtfs').
 ```
 
-Find a route between two stops:
+### Example Query
+
+Find a route from stop 'FROM_STOP_ID' to 'TO_STOP_ID' departing at 9:00 AM:
 
 ```prolog
-% Find route with up to 2 transfers
 ?- find_route(
-    stop_id('12345'),
-    stop_id('67890'),
+    stop_id('FROM_STOP_ID'),
+    stop_id('TO_STOP_ID'),
     time(9, 0, 0),
     Routes,
     [max_transfers(2)]
 ).
 ```
 
-For detailed examples, see [QUICKSTART.md](QUICKSTART.md).
+## Recommended GTFS Feeds (for Learning)
 
-## Learning Resources
+For best results, start with mid-sized systems:
 
-### Quick Start ⭐
-- **[examples/quick-reference.md](examples/quick-reference.md)** - Terminal commands you can copy-paste (START HERE!)
-- **[examples/example_queries.pl](examples/example_queries.pl)** - Prolog code examples and interactive demos
-- **[examples/README.md](examples/README.md)** - Guide to using the examples
+* Portland, OR (TriMet)
+* Ann Arbor, MI (TheRide)
+* Madison, WI (Metro Transit)
 
-### External Resources
-New to Prolog? This project is designed as a practical learning experience:
+Large metropolitan bus networks are intentionally challenging for this architecture.
 
-- **SWI-Prolog Tutorial**: https://www.swi-prolog.org/pldoc/man?section=quickstart
-- **Learn Prolog Now** (free book): http://www.learnprolognow.org/
-- **99 Prolog Problems**: Practice exercises to build skills
-- **GTFS Reference**: https://gtfs.org/schedule/reference/
+## Architecture Overview
 
-## Example Queries
-
-### Fastest Route
-
-```prolog
-?- fastest_route(
-    stop_id('downtown_station'),
-    stop_id('airport'),
-    time(10, 30, 0),
-    Route
-).
-```
-
-### Wheelchair Accessible Route
-
-```prolog
-?- accessible_route(
-    stop_id('central_library'),
-    stop_id('university'),
-    time(14, 0, 0),
-    Route
-).
-```
-
-### Next Departures
-
-```prolog
-% Get next 5 departures from a stop
-?- next_departures(
-    stop_id('main_street'),
-    5,
-    time(8, 45, 0),
-    Departures
-).
-```
-
-### Isochrone (Reachability Analysis)
-
-```prolog
-% Find all stops reachable within 30 minutes
-?- isochrone(
-    stop_id('city_center'),
-    time(9, 0, 0),
-    30,
-    ReachableStops
-).
-```
-
-### Location-Based Routing
-
-```prolog
-% Route from GPS coordinates
-?- find_route(
-    location(45.5231, -122.6765),
-    stop_id('convention_center'),
-    now,
-    Routes,
-    []
-).
-```
-
-## Architecture
-
-```
+```graphql
 src/
-├── core/              # GTFS data loading and time utilities
-│   ├── gtfs_schema.pl
-│   ├── gtfs_loader.pl
-│   └── time_utils.pl
-├── routing/           # Route planning and optimization
-│   ├── route_planner.pl         # DFS-based routing
-│   ├── route_planner_astar.pl   # A* search (NEW!)
-│   ├── constraints.pl
-│   └── transfers.pl
-├── explain/           # Explainability engine (NEW!)
-│   └── reasoning.pl               # Trace collection
-├── multimodal/        # Walking and OSM integration
-│   ├── walking.pl
-│   └── osm_integration.pl
-└── query/             # High-level API
-    └── api.pl
+├── core/
+├── routing/
+├── multimodal/
+├── query/
+└── tests/
 ```
 
-### Core Modules
+**Core Modules**
 
-- **gtfs_loader**: Parses GTFS CSV files and loads data into Prolog predicates
-- **route_planner**: Implements depth-first search routing with transfer limits
-- **route_planner_astar**: High-performance A* search with geographic heuristic (NEW!)
-- **reasoning**: Trace collection for explainable routing decisions (NEW!)
-- **constraints**: CLP(FD)-based multi-objective optimization
-- **transfers**: Manages transfers with walking time calculations using haversine formula
-- **api**: User-friendly high-level query interface
+* **gtfs_loader.pl** — Parses GTFS CSV files into Prolog facts
+* **route_planner_astar.pl** — Time-dependent A* search
+* **constraints.pl** — Multi-objective constraint handling
+* **transfers.pl** — Transfer feasibility and walking logic
+* **api.pl** — User-facing query interface
 
-## Query API Reference
+## Query API (Selected)
 
-### Main Predicates
+`load_gtfs(+Directory)`
 
-#### `load_gtfs(+DataDirectory)`
-Loads all GTFS data from a directory.
+Loads GTFS data into memory.
 
-#### `find_route(+From, +To, +When, -Routes, +Options)`
-Finds routes between two locations.
+`find_route(+From, +To, +When, -Routes, +Options)`
 
-**Parameters:**
-- `From/To`: `stop_id(Id)`, `stop_name(Name)`, or `location(Lat, Lon)`
-- `When`: `time(H, M, S)` or `now`
-- `Routes`: List of route solutions
-- `Options`: List of options (see below)
+Finds candidate routes between two locations.
 
-**Options:**
-- `max_transfers(N)`: Maximum number of transfers (default: 3)
-- `wheelchair_accessible(true/false)`: Require accessible routes
-- `optimize(time/transfers/balanced)`: Optimization preference
-- `date(YYYYMMDD)`: Service date for calendar checking
+**Options include:**
 
-#### `fastest_route(+From, +To, +When, -Route)`
-Finds the route with minimum travel time.
+* `max_transfers(N)`
+* `wheelchair_accessible(true/false)`
+* `optimize(time | transfers | balanced)`
+* `date(YYYYMMDD)`
 
-#### `least_transfers(+From, +To, +When, -Route)`
-Finds the route with fewest transfers.
+`fastest_route/4`
 
-#### `accessible_route(+From, +To, +When, -Route)`
-Finds a wheelchair accessible route.
+Returns the minimum-time route.
 
-#### `next_departures(+StopId, +Count, +AfterTime, -Departures)`
-Gets the next N departures from a stop.
+`isochrone/4`
 
-#### `isochrone(+FromStop, +DepartureTime, +MaxMinutes, -ReachableStops)`
-Finds all stops reachable within a time limit.
+Computes stops reachable within a given time budget.
 
-## GTFS Data Sources
+## Data Model (Simplified)
 
-The system works with any transit agency that provides GTFS data. Recommended starting datasets:
-
-### Mid-Sized Cities (Recommended for Learning)
-
-- **Portland, OR (TriMet)**: https://developer.trimet.org/GTFS.shtml
-- **Ann Arbor, MI (TheRide)**: https://www.theride.org/about/plans-reports/data-resources
-- **Madison, WI (Metro Transit)**: https://www.cityofmadison.com/metro/business/information-for-developers
-
-### Finding GTFS Feeds
-
-Browse 1,000+ transit agencies worldwide at:
-- **MobilityData Catalog**: https://database.mobilitydata.org/
-- **TransitFeeds**: https://transitfeeds.com/
-
-## Advanced Features
-
-### Constraint-Based Optimization
-
-Use custom weights for multi-objective optimization:
-
-```prolog
-?- optimize_route(
-    stop_id('A'),
-    stop_id('B'),
-    [
-        departure_time(time(9, 0, 0)),
-        weights(5, 3, 2),  % time, transfers, walking
-        constraints([max_time(60), max_transfers(2)])
-    ],
-    OptimalRoute
-).
+```Prolog
+stop(StopId, Name, Lat, Lon, Wheelchair, LocationType, ParentStation).
+route(RouteId, ShortName, LongName, Type, Color, Agency).
+stop_time(TripId, StopId, Arrival, Departure, Sequence).
 ```
 
-### Multi-Destination Trip Planning
+## Lessons Encoded in the Codebase
 
-Plan trips with multiple stops:
+This repository intentionally preserves:
 
-```prolog
-?- trip_planner(
-    [
-        location(42.3601, -71.0589),
-        visit(stop_id('museum')),
-        visit(stop_id('restaurant')),
-        return(location(42.3601, -71.0589))
-    ],
-    Plan,
-    [departure_time(time(9, 0, 0))]
-).
-```
+* A clean declarative GTFS representation
+* A working but non-scaling routing approach
+* Multiple attempted mitigations (caching, bundling, constraints)
 
-### Transfer Analysis
+Together, they document **where declarative elegance gives way to algorithmic reality**.
 
-```prolog
-% Find nearby stops for transfers
-?- nearby_stops(stop_id('central_station'), 400, NearbyStops).
+## When to Use This Project
 
-% Calculate walking time between stops
-?- walking_transfer(stop_id('stop_a'), stop_id('stop_b'), Minutes).
+Use this repository if you want to:
+- Learn Prolog through a real, non-trivial domain
+- Understand transit routing mechanics conceptually
+- Experiment with declarative search and constraints
+- Study why specialized algorithms like RAPTOR exist
 
-% Validate transfer feasibility
-?- valid_transfer(
-    stop_id('from_stop'),
-    stop_id('to_stop'),
-    time(9, 15, 0),  % arrival time
-    time(9, 25, 0),  % next departure
-    [min_transfer_time(5)]
-).
-```
-
-## Data Structures
-
-### Route Solution
-
-```prolog
-route_solution(TotalTime, NumTransfers, Segments)
-```
-
-Where each segment is:
-```prolog
-segment(TripId, RouteId, FromStop, ToStop, DepartureTime, ArrivalTime, StopCount)
-```
-
-### Stop Information
-
-```prolog
-stop(StopId, Name, Latitude, Longitude, WheelchairBoarding, LocationType, ParentStation)
-```
-
-### Route Information
-
-```prolog
-route(RouteId, ShortName, LongName, Type, Color, AgencyId)
-```
-
-## Testing
-
-Run the unit tests:
-
-```prolog
-?- [tests/test_routing].
-?- run_tests.
-```
-
-## Performance Considerations
-
-- **Indexing**: Key predicates are hash-indexed for O(1) lookup
-- **Memory**: All GTFS data is loaded into memory for fast access
-- **Large Datasets**: For very large transit systems (>10,000 stops), consider:
-  - Limiting search depth
-  - Using external database (PostgreSQL)
-  - Implementing tabling for memoization
-
-## Recent Improvements (Nov 2, 2025)
-
-### ✅ A* Route Planner
-- High-performance A* search algorithm implemented
-- Geographic heuristic using haversine distance
-- 10-100x faster than DFS for multi-route queries
-- See [ASTAR-USAGE.md](ASTAR-USAGE.md) for usage guide
-
-### ✅ Explainability Engine (Phase 1 Days 1-4)
-- Reasoning trace collection infrastructure
-- Tracks all routing decisions
-- Foundation for explaining route choices
-- See [session_notes/2025-11-02-phase1-day1-2.md](session_notes/2025-11-02-phase1-day1-2.md)
-
-### ✅ Critical Bug Fixes
-- Fixed CSV type conversion issues in GTFS loader
-- Corrected transfer counting logic
-- Added segment merging for clearer route display
-
-## Future Enhancements
-
-Potential areas for expansion:
-
-- **Phase 1 Days 5-7**: Natural language explanation generation (IN PROGRESS)
-- **Real-Time Data**: Integrate GTFS-Realtime for live vehicle positions
-- **OpenStreetMap**: Add detailed walking/cycling routes (see [src/multimodal/osm_integration.pl](src/multimodal/osm_integration.pl))
-- **Web Interface**: Build REST API using SWI-Prolog HTTP server
-- **Visualization**: Export routes to GeoJSON for mapping
-- **Fare Calculation**: Add fare zones and pricing
-
-## Contributing
-
-Contributions are welcome! Areas that need work:
-
-1. OSM integration for accurate walking routes
-2. Real-time data support (GTFS-Realtime)
-3. Performance optimization for large datasets
-4. Additional optimization algorithms (A*, Connection Scan)
-5. Web interface development
-
-## Technical Background
-
-### Why Prolog?
-
-This project leverages Prolog's unique strengths:
-
-- **Declarative Queries**: Express routing constraints naturally
-- **Backtracking**: Explore multiple route alternatives automatically
-- **Unification**: Pattern matching for schedule and stop queries
-- **CLP(FD)**: Constraint logic programming for optimization
-- **Graph Processing**: Natural fit for transit network traversal
-
-### Algorithms Used
-
-- **Route Finding**: Depth-first search with transfer limits
-- **Optimization**: CLP(FD) constraint satisfaction
-- **Transfer Calculation**: Haversine formula for geographic distance
-- **Time Handling**: GTFS time format with past-midnight support
+Do **not** use it as a production routing backend.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT License. See [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 
-- GTFS specification: https://gtfs.org/
-- SWI-Prolog: https://www.swi-prolog.org/
-- Transit agencies providing open data
-
-## Support
-
-For questions, issues, or feature requests:
-- Open an issue on GitHub
-- Check [QUICKSTART.md](QUICKSTART.md) for common problems
-- Review [examples/example_queries.pl](examples/example_queries.pl) for usage patterns
-
----
-
-Built with SWI-Prolog • GTFS • CLP(FD)
+- GTFS Specification — https://gtfs.org/
+- SWI-Prolog — https://www.swi-prolog.org/
+- Transit agencies providing open GTFS data
