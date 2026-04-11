@@ -9,6 +9,8 @@ A research-oriented transit routing prototype built in **Prolog** to explore how
 
 This project uses **GTFS (General Transit Feed Specification)** data to model transit networks and implements time-dependent routing using A* search. Its primary goal is not to compete with production planners, but to **stress-test logic programming on a data-heavy, algorithmically demanding domain** and document where it succeeds — and where it breaks down.
 
+📖 Read the full write-up: [Learning Prolog by Stress-Testing It on a Real Transit Routing Problem](https://islamtaha-29281.medium.com/learning-prolog-by-stress-testing-it-on-a-real-transit-routing-problem-314d002351fb)
+
 ## Project Motivation
 
 Most transit routing systems are built using imperative languages and specialized algorithms designed to handle large, time-indexed datasets efficiently.
